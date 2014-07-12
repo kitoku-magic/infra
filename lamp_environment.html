@@ -9,8 +9,107 @@
 		<h2>LAMP環境構築手順</h2>
 		<p>このページは、LAMP環境を構築する際の手順書です。</p>
 		<p>公開環境に構築するのか否かや、</p>
-		<p>どういった設定で公開したいのかによって、細かい箇所の内容は変わりますが、</p>
+		<p>どういった設定で公開したいのかによって、設定内容は大幅に変わりますが、</p>
 		<p>一つの参考例として、活用していただければ幸いです。</p>
+		<p>また、コメントは「//」書式で書いていますので、ご注意下さい。</p><br />
+		<h3>目次：</h3>
+		<h3><a href="#os_install_detail" name="os_install_list">１．OSのインストール</a></h3>
+		<h3><a href="#clock_setting_detail" name="clock_setting_list">２．ハードウェアクロックの設定とシステムクロックとの同期</a></h3>
+		<h3><a href="#network_setting_detail" name="network_setting_list">３．ネットワークの設定</a></h3>
+		<h3><a href="#system_update_detail" name="system_update_list">４．システムのアップデート</a></h3>
+		<h3>５．ユーザーの追加とパスワードの設定</h3>
+		<h3>６．SSH用の公開鍵認証の設定</h3>
+		<h3>７．iptablesの設定</h3>
+		<h3>８．sudoersの設定</h3>
+		<h3>９．vimのインストール</h3>
+		<h3>１０．vimの設定</h3>
+		<h3>１１．logrotateの設定</h3>
+		<h3>１２．環境変数の設定</h3>
+		<h3>１３．Webサーバーのインストール</h3>
+		<h3>１４．MySQLのインストール</h3>
+		<h3>１５．PostgreSQLのインストール</h3>
+		<h3>１６．PHPのインストール</h3>
+		<h3>１７．ctagsの設定</h3>
+		<h3>１８．gitのインストール</h3>
+		<h3>１９．githubの公開鍵認証の設定</h3>
+		<h3>２０．githubの作業の一連の流れ</h3>
+		<h3>２１．本番サーバへのアップ設定</h3>
+		<h3>２２．rsyncコマンドのインストール</h3>
+		<h3>２３．Gitリポジトリの設定</h3>
+		<h3>２４．本番サーバへのアップ手順</h3>
+		<h3>２５．pchartのインストール</h3><br />
+		<h3><a href="#os_install_list" name="os_install_detail">１．OSのインストール</a></h3>
+		<p>CentOS6.3をインストール時の内容。</p>
+		<p>デフォルト以外の設定をした箇所は以下の通り。</p><br />
+		<p>１．ディスクパーティション設定は、「カスタムレイアウトを作成する」を選択。</p>
+		<p>２．既存のパーティションを、一つずつ「削除」ボタンで削除していき、「空き」の表示のみにする。</p>
+		<p>３．以下のパーティションを作成する。</p><br />
+		<p>(1)標準パーティションを作成、ファイルシステムタイプをswap、サイズを2048、「基本パーティションにする」にチェックを入れる。</p>
+		<p>(2)標準パーティションを作成、マウントポイントを/、ファイルシステムタイプをext4、最大許容量まで使用を選択、「基本パーティションにする」にチェックを入れる。</p><br />
+		<h3><a href="#clock_setting_list" name="clock_setting_detail">２．ハードウェアクロックの設定とシステムクロックとの同期</a></h3>
+		<p>// UTCを無効にする</p>
+		<p># vi /etc/sysconfig/clock</p><br />
+		<p>変更前：</p>
+		<p>ZONE="Asia/Tokyo"</p><br />
+		<p>変更後：</p>
+		<p>ZONE="Asia/Tokyo"</p>
+		<p>UTC=false</p>
+		<p>ARC=false</p>
+		<p>SRM=false</p><br />
+		<p>// 日本時間をローカル時間にする</p>
+		<p># cp /usr/share/zoneinfo/Japan /etc/localtime</p><br />
+		<p>// ハードウェアクロックの時間を設定する</p>
+		<p># hwclock --set --date="設定したい時刻(例：14/07/01 01:00:00)"</p><br />
+		<p>// システムクロックを、ハードウェアクロックの時間に合わせる</p>
+		<p># hwclock -s --localtime</p><br />
+		<p># shutdown -r now</p><br />
+		<h3><a href="#network_setting_list" name="network_setting_detail">３．ネットワークの設定</a></h3>
+		<p>// ネットワークインタフェース設定ファイルを修正する</p>
+		<p># vi /etc/sysconfig/network-scripts/ifcfg-eth0</p><br />
+		<p>変更前：</p>
+		<p>DEVICE="eth0"</p>
+		<p>BOOTPROTO="dhcp"</p>
+		<p>HWADDR="ほげほげ"</p>
+		<p>NM_CONTROLLED="yes"</p>
+		<p>ONBOOT="no"</p>
+		<p>TYPE="Ethernet"</p>
+		<p>UUID="ほげほげ"</p><br />
+		<p>変更後：(赤文字の行が、修正 or 追加した行)</p>
+		<p>// ネットワークインタフェース名</p>
+		<p>DEVICE="eth0"</p>
+		<p>// 固定IPに設定</p>
+		<p style="color: #ff0000;">BOOTPROTO="static"</p>
+		<p>// MACアドレス</p>
+		<p>HWADDR="ほげほげ"</p>
+		<p>// NetworkManagerからの設定を許可しない</p>
+		<p style="color: #ff0000;">NM_CONTROLLED="no"</p>
+		<p>// OS起動時に、ネットワークも同時に起動させる</p>
+		<p style="color: #ff0000;">ONBOOT="yes"</p>
+		<p>// インタフェースの種類</p>
+		<p>TYPE="Ethernet"</p>
+		<p>// OSがNICを認識する時のユニークな認識名</p>
+		<p>UUID="ほげほげ"</p>
+		<p>// IPアドレス</p>
+		<p style="color: #ff0000;">IPADDR=192.168.1.22</p>
+		<p>// サブネットのプレフィックス長</p>
+		<p style="color: #ff0000;">PREFIX=24</p>
+		<p>// ゲートウェイのIPアドレス</p>
+		<p style="color: #ff0000;">GATEWAY=192.168.1.1</p>
+		<p>// DNSサーバーのIPアドレス（今回は、ゲートウェイと同じIP）</p>
+		<p style="color: #ff0000;">DNS1=192.168.1.1</p>
+		<p>// このNICが、デフォルトで使用されるNICである事を指定</p>
+		<p style="color: #ff0000;">DEFROUTE=yes</p>
+		<p>// IPv4が使えなくても、IPv6は使わない</p>
+		<p style="color: #ff0000;">IPV4_FAILURE_FATAL=yes</p>
+		<p>// IPv6は使わない</p>
+		<p style="color: #ff0000;">IPV6INIT=no</p>
+		<p>// NetworkManagerがNICを認識する時の名前</p>
+		<p style="color: #ff0000;">NAME="System eth0"</p><br />
+		<p>// ネットワーク再起動</p>
+		<p># /etc/init.d/network restart</p><br />
+		<h3><a href="#system_update_list" name="system_update_detail">４．システムのアップデート</a></h3><br />
+		<p># yum update(yum -y updateとすると、以下の入力が省略される)</p><br />
+		<p>Is this ok [y/N]: {yを入力しenter押下}</p>
 	</div>
 </body>
 </html>
