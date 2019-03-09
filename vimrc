@@ -1,13 +1,13 @@
 "新しい行を開始したときに、新しい行のインデントを現在行と同じ量にする
 set autoindent
 "見やすい色を表示するようにVimに背景色を教える
-set background=light
+set background=dark
 "バックスペースキーの動作を決定する
 set backspace=2
 "バックアップを取る
-set backup
+"set backup
 "バックアップファイルの拡張子
-set backupext=.vimbak
+"set backupext=.vimbak
 "Cプログラムファイルの自動インデントを始める
 set cindent
 "クリップボードの動作設定（コンパイルオプションで+clipboardになっている必要がある）
@@ -57,4 +57,44 @@ endif
 "挿入モードから抜ける時にペーストモードを解除する
 autocmd InsertLeave * set nopaste
 
-"autocmd FileType php set tags=/opt/final_magic/.tags
+"dein Scripts-----------------------------
+if &compatible
+  set nocompatible               " Be iMproved
+endif
+
+" Required:
+set runtimepath+=$HOME/.cache/dein/repos/github.com/Shougo/dein.vim
+
+" Required:
+if dein#load_state('$HOME/.cache/dein')
+  call dein#begin('$HOME/.cache/dein')
+
+  " Let dein manage dein
+  " Required:
+  call dein#add('$HOME/.cache/dein/repos/github.com/Shougo/dein.vim')
+
+  " Add or remove your plugins here like this:
+  "call dein#add('Shougo/neosnippet.vim')
+  "call dein#add('Shougo/neosnippet-snippets')
+  call dein#add('greymd/oscyank.vim')
+
+  " Required:
+  call dein#end()
+  call dein#save_state()
+endif
+
+" Required:
+filetype plugin indent on
+syntax enable
+
+" If you want to install not installed plugins on startup.
+if dein#check_install()
+  call dein#install()
+endif
+
+"End dein Scripts-------------------------
+
+let mapleader = " "
+
+noremap <Leader>c :Oscyank<cr>
+noremap <Leader>y :<C-u>OscyankRegister<cr>
