@@ -6,9 +6,11 @@
 - auto_install（環境構築の自動化を目的とした、シェルスクリプトが書かれています）
 
 # auto_installについて
-CentOS7をminimal installした直後に実行して、任意の環境構築を自動で行う為のスクリプトです。
+Rocky Linux9をminimal installした直後に実行して、任意の環境構築を自動で行う為のスクリプトです。
 
-CentOS6はNG、CentOS8は未確認（7とバージョンが記載されている箇所だけ直せば動くかもしれません）です。
+Rocky Linux8は未確認（9とバージョンが記載されている箇所だけ直せば動くかもしれません）です。
+
+また、よく似ているAlmaLinuxでも殆ど修正無しで動くかもしれませんが、未確認です。
 
 ## 各ファイルの説明
 - auto_install_start.sh  
@@ -43,12 +45,14 @@ auto_install_start.shとauto_install_start_by_{GENERAL_USER_NAME}.shから呼ば
 4. Githubの二段階認証が有効の場合、以下URLの手順で、「Personal access tokens」を取得（スコープは、write:public_keyのみチェック）して、
 parameter_{ENVIRONMENT}.conf内の、「GITHUB_PERSONAL_ACCESS_TOKEN」変数に、作成したアクセストークンの内容を設定する。  
 https://howpon.com/5308  
-5. 実行対象のサーバーにSCPなどを用いて、上記のファイルを設置（必ず同じディレクトリ内に置く）する。  
-6. 以下のコマンドで、自動インストールシェルスクリプトを実行する（timeコマンドは任意）。  
+5. 実行対象のサーバーにSCPなどを用いて、上記の5ファイルを設置（5ファイル全てを必ず同じディレクトリ内に置く）する。  
+6. swapパーティションが存在しない環境の場合は、以下URLの内容を参考にswapfileを作成する。  
+https://manual.sakura.ad.jp/vps/os-packages/add-swapfile.html  
+7. rootユーザーで以下コマンドの、自動インストールシェルスクリプトを実行する（timeコマンドは任意）。  
 ```time bash auto_install_start.sh {ENVIRONMENT}```  
 （実行確認を２回行う対話処理を外した場合は、以下も可能）  
 ```time bash auto_install_start.sh {ENVIRONMENT} > /root/install.log 2>&1 &```  
-7. auto_install_start.shのファイル末尾に書かれている事や、環境に応じた手動での修正を行う。  
+8. 実行が終了したら、auto_install_start.shのファイル末尾に書かれている事や、環境に応じた手動での修正を行う。  
 
 # 免責事項
 実行対象のサーバーに大きな変更（カーネルのバージョンアップも含む）が発生しますので、  
