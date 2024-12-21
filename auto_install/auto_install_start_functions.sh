@@ -23,14 +23,14 @@ function print_current_time () {
 }
 
 #----------------------------------------------------------
-# yumコマンドでのパッケージの変更をする関数
+# dnfコマンドでのパッケージの変更をする関数
 #----------------------------------------------------------
-function change_yum_package () {
+function change_dnf_package () {
   COMMAND_PREFIX=''
   if [ "$3" != "" ]; then
     COMMAND_PREFIX='sudo '
   fi
-  ${COMMAND_PREFIX}rm -rf /var/cache/yum/*
-  ${COMMAND_PREFIX}yum clean all
-  ${COMMAND_PREFIX}yum -y $1 $2
+  ${COMMAND_PREFIX}rm -rf /var/cache/dnf/*
+  ${COMMAND_PREFIX}dnf clean all
+  ${COMMAND_PREFIX}dnf -y $1 $2
 }

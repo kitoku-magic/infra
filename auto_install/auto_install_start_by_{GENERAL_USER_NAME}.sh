@@ -21,15 +21,13 @@ source ./parameter_"${1}".conf
 # 呼び出し元のチェック
 COMMAND_HISTORIES[0]="bash -c source /home/${2}/auto_install_start_by_${2}.sh ${1} ${2}"
 COMMAND_HISTORIES[1]="script -c source /home/${2}/auto_install_start_by_${2}.sh ${1} ${2}"
-COMMAND_HISTORIES[2]="script -c source /home/${2}/auto_install_start_by_${2}.sh ${1} ${2}"
-COMMAND_HISTORIES[3]="su - ${2} -c script -c 'source /home/${2}/auto_install_start_by_${2}.sh ${1} ${2}'"
-COMMAND_HISTORIES[4]="bash auto_install_start.sh ${1}"
 
 pid=$$
 for COMMAND_HISTORY in "${COMMAND_HISTORIES[@]}"
 do
   # プロセスIDから、紐づくコマンドを取得
   cmd="$(cat /proc/$pid/cmdline | tr '\0' ' ' | sed 's/<tab>*$\| *$//')"
+  echo $cmd
   if [ "$cmd" != "$COMMAND_HISTORY" ]; then
     echo "呼び出し元のコマンド履歴が一致していません。cmd=${cmd}" 1>&2
     exit 1
@@ -59,7 +57,7 @@ check_command_status "gccファイルの解凍に失敗しました。"
 
 cd gcc-${GCC_VERSION}
 
-change_yum_package install "${GCC_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package install "${GCC_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "gccの必須パッケージのインストールに失敗しました。"
 
@@ -77,16 +75,16 @@ bash ./gcc_ccc
 
 check_command_status "gccのconfigureに失敗しました。"
 
-make -j"$(nproc)"
+make
 
 check_command_status "gccのmakeに失敗しました。"
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "gccのmake installに失敗しました。"
 
 GCC_PACKAGE='gcc gcc-c++'
-change_yum_package remove "${GCC_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package remove "${GCC_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "gccパッケージのアンインストールに失敗しました。"
 
@@ -96,13 +94,15 @@ sudo cp /etc/profile /etc/profile.org
 
 check_command_status "/etc/profileのバックアップに失敗しました。"
 
-echo 'export PATH=$PATH:/opt/gcc/current/bin' | sudo tee -a /etc/profile
+echo 'export PATH=/opt/gcc/current/bin:$PATH' | sudo tee -a /etc/profile
 
 source /etc/profile
 
 check_command_status "gccの/etc/profileの反映に失敗しました。"
 
-sudo mv /opt/gcc/current/lib64/libstdc++.so.6.0.28-gdb.py /opt/gcc/current/lib64/ignore-libstdc++.so.6.0.28-gdb.py
+cd /opt/gcc/current/lib64/
+
+ls libstdc*-gdb.py | sed -r "s/(libstdc.+-gdb\.py)/sudo mv \1 ignore-\1/g" | bash
 
 echo '/opt/gcc/current/lib64' | sudo tee -a /etc/ld.so.conf.d/gcc.conf
 
@@ -115,6 +115,59 @@ print_current_time
 echo "gccのインストールが完了しました。"
 
 #----------------------------------------------------------#
+# zlibのインストール
+#----------------------------------------------------------#
+echo "zlibのインストールを行います。"
+
+print_current_time
+
+cd /home/${GENERAL_USER_NAME}/src
+
+curl ${CURL_RETRY_OPTION} -O https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz
+
+check_command_status "zlibのダウンロードに失敗しました。"
+
+tar zxvf ./zlib-${ZLIB_VERSION}.tar.gz
+
+check_command_status "zlibファイルの解凍に失敗しました。"
+
+cd zlib-${ZLIB_VERSION}
+
+change_dnf_package install "${ZLIB_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+
+check_command_status "zlibの必須パッケージのインストールに失敗しました。"
+
+echo "./configure --prefix=/opt/zlib/${ZLIB_VERSION}" > ./zlib_ccc
+
+bash ./zlib_ccc
+
+check_command_status "zlibのconfigureに失敗しました。"
+
+make
+
+check_command_status "zlibのmakeに失敗しました。"
+
+sudo make install
+
+check_command_status "zlibのmake installに失敗しました。"
+
+sudo ln -s /opt/zlib/${ZLIB_VERSION} /opt/zlib/current
+
+echo '/opt/zlib/current/lib' | sudo tee -a /etc/ld.so.conf.d/zlib.conf
+
+sudo ldconfig
+
+check_command_status "zlib用のldconfigに失敗しました。"
+
+export LD_LIBRARY_PATH=/opt/zlib/current/lib
+
+check_command_status "LD_LIBRARY_PATHのexportに失敗しました。"
+
+print_current_time
+
+echo "zlibのインストールが完了しました。"
+
+#----------------------------------------------------------#
 # OpenSSLのインストール
 #----------------------------------------------------------#
 echo "OpenSSLのインストールを行います。"
@@ -123,7 +176,7 @@ print_current_time
 
 cd /home/${GENERAL_USER_NAME}/src
 
-curl ${CURL_RETRY_OPTION} -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
+curl ${CURL_RETRY_OPTION} -L -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
 
 check_command_status "OpenSSLのダウンロードに失敗しました。"
 
@@ -133,9 +186,9 @@ check_command_status "OpenSSLファイルの解凍に失敗しました。"
 
 cd openssl-${OPENSSL_VERSION}
 
-echo "./config --prefix=/opt/openssl/${OPENSSL_VERSION} --openssldir=/opt/openssl/${OPENSSL_VERSION} shared zlib" > ./openssl_ccc
+echo "./config --prefix=/opt/openssl/${OPENSSL_VERSION} --openssldir=/opt/openssl/${OPENSSL_VERSION} shared zlib enable-md2" > ./openssl_ccc
 
-change_yum_package install "${OPENSSL_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package install "${OPENSSL_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "OpenSSLの必須パッケージのインストールに失敗しました。"
 
@@ -143,27 +196,35 @@ bash ./openssl_ccc
 
 check_command_status "OpenSSLのconfigureに失敗しました。"
 
-make -j"$(nproc)"
+make
 
 check_command_status "OpenSSLのmakeに失敗しました。"
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "OpenSSLのmake installに失敗しました。"
 
 sudo ln -s /opt/openssl/${OPENSSL_VERSION} /opt/openssl/current
 
-sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/openssl/current/bin@g' /etc/profile
+sudo mv /opt/openssl/current/ssl /opt/openssl/current/ssl.bk
+
+sudo ln -s /etc/pki/tls /opt/openssl/current/ssl
+
+sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/openssl/current/bin:\3@g' /etc/profile
 
 source /etc/profile
 
 check_command_status "OpenSSLの/etc/profileの反映に失敗しました。"
 
-echo '/opt/openssl/current/lib' | sudo tee -a /etc/ld.so.conf.d/openssl.conf
+echo '/opt/openssl/current/lib64' | sudo tee -a /etc/ld.so.conf.d/openssl.conf
 
 sudo ldconfig
 
 check_command_status "OpenSSL用のldconfigに失敗しました。"
+
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/openssl/current/lib64:/usr/lib:/usr/lib64
+
+check_command_status "LD_LIBRARY_PATHのexportに失敗しました。"
 
 print_current_time
 
@@ -201,7 +262,7 @@ echo "./configure \
 --with-ssl-engine \
 --with-zlib" > ./openssh_ccc
 
-change_yum_package install "${OPENSSH_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package install "${OPENSSH_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "OpenSSHの必須パッケージのインストールに失敗しました。"
 
@@ -209,13 +270,13 @@ bash ./openssh_ccc
 
 check_command_status "OpenSSHのconfigureに失敗しました。"
 
-make -j"$(nproc)"
+make
 
 check_command_status "OpenSSHのmakeに失敗しました。"
 
 sudo rm -rf /etc/ssh
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "OpenSSHのmake installに失敗しました。"
 
@@ -410,30 +471,6 @@ Accept=yes
 WantedBy=sockets.target
 EOF
 
-sudo cp /etc/firewalld/firewalld.conf /etc/firewalld/firewalld.conf.org
-
-check_command_status "ファイアウォールの設定ファイルのバックアップに失敗しました。"
-
-sudo sed -i -e 's/^AllowZoneDrifting.*=.*/AllowZoneDrifting=no/g' /etc/firewalld/firewalld.conf
-
-check_command_status "ファイアウォールの設定ファイルの編集に失敗しました。"
-
-sudo cp /usr/lib/firewalld/services/ssh.xml /etc/firewalld/services/ssh.xml
-
-check_command_status "ファイアウォールのssh設定ファイルのバックアップに失敗しました。"
-
-sudo sed -i -e 's/^\(.*<port protocol="tcp" port="\)[0-9]\+\("\/>$\)/\1'${SSH_SETTINGS["Port"]}'\2/g' /etc/firewalld/services/ssh.xml
-
-check_command_status "ファイアウォールのssh設定ファイルの編集に失敗しました。"
-
-sudo firewall-cmd --reload
-
-check_command_status "ssh設定時のファイアウォールの再起動に失敗しました。"
-
-sudo systemctl daemon-reload
-
-check_command_status "OpenSSH用のdaemon-reloadに失敗しました。"
-
 sudo systemctl restart sshd.service
 
 check_command_status "OpenSSHの起動に失敗しました。"
@@ -445,78 +482,102 @@ check_command_status "OpenSSHの自動起動の設定に失敗しました。"
 echo "SSH用の公開鍵認証の設定が完了しました。"
 
 #----------------------------------------------------------#
-# firewalld（ファイアウォール）の設定
+# nftables（ファイアウォール）の基本設定と反映
+# @see https://wiki.archlinux.jp/index.php/Nftables#.E3.83.92.E3.83.B3.E3.83.88.E3.81.A8.E3.83.86.E3.82.AF.E3.83.8B.E3.83.83.E3.82.AF
+# @see https://thinca.hatenablog.com/entry/nftables-settings-memo-2020
+# @see https://bogamp.hatenablog.com/entry/2024/10/27/032444
 #----------------------------------------------------------#
-echo "ファイアウォールの設定を行います。"
+echo "nftables（ファイアウォール）の基本設定と反映を行います。"
 
+# nftの初期化
+sudo nft flush ruleset
 
-# IPV4
-sudo firewall-cmd --direct --permanent --add-chain ipv4 filter SSH
+# テーブル作成
+sudo nft add table ip my_nft4_table
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -i lo -j ACCEPT
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add table ip6 my_nft6_table
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY ! -i lo -d 127.0.0.0/8 -j REJECT
-let FIREWALL_IPV4_PRIORITY++
+# チェイン作成
+sudo nft add chain ip my_nft4_table input { type filter hook input priority 0 \; policy drop \; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -m state --state ESTABLISHED,RELATED -j ACCEPT
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip my_nft4_table forward { type filter hook forward priority 0 \;  policy drop \; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp --tcp-flags ALL NONE -j DROP
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip my_nft4_table output { type filter hook output priority 0 \; policy accept \; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp '!' --syn -m state --state NEW -j DROP
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip6 my_nft6_table input { type filter hook input priority 0 \; policy drop \; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp --tcp-flags ALL ALL -j DROP
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip6 my_nft6_table forward { type filter hook forward priority 0 \;  policy drop \; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p icmp --icmp-type echo-request -j ACCEPT
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip6 my_nft6_table output { type filter hook output priority 0 \; policy accept \; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${SSH_SETTINGS['Port']} -j SSH
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip my_nft4_table TCP
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter SSH $FIREWALL_IPV4_PRIORITY -m hashlimit --hashlimit 1/m --hashlimit-burst 5 --hashlimit-mode srcip --hashlimit-htable-expire 60000 --hashlimit-name ssh-con -j RETURN
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add chain ip6 my_nft6_table TCPV6
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter SSH $FIREWALL_IPV4_PRIORITY -j LOG --log-level info --log-prefix "[ SSH attack ]: "
-let FIREWALL_IPV4_PRIORITY++
+# セット作成
+sudo nft add set ip my_nft4_table ssh_dos_counter { type ipv4_addr\; size 65535\; flags dynamic\; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter SSH $FIREWALL_IPV4_PRIORITY -j DROP
-let FIREWALL_IPV4_PRIORITY++
+# IPv4ルール作成
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${SSH_SETTINGS['Port']} -j ACCEPT
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add rule ip my_nft4_table input ct state related,established accept
 
+sudo nft add rule ip my_nft4_table input ct state invalid drop
 
-# IPV6
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -i lo -j ACCEPT
-let FIREWALL_IPV6_PRIORITY++
+sudo nft add rule ip my_nft4_table input iif lo accept
 
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -m state --state ESTABLISHED,RELATED -j ACCEPT
-let FIREWALL_IPV6_PRIORITY++
+sudo nft add rule ip my_nft4_table input meta l4proto icmp accept
 
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp --tcp-flags ALL NONE -j DROP
-let FIREWALL_IPV6_PRIORITY++
+sudo nft add rule ip my_nft4_table input ip protocol icmp icmp type echo-request ct state new accept
 
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp '!' --syn -m state --state NEW -j DROP
-let FIREWALL_IPV6_PRIORITY++
+sudo nft add rule ip my_nft4_table input ip protocol tcp tcp flags \& \(fin\|syn\|rst\|ack\) == syn jump TCP
 
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp --tcp-flags ALL ALL -j DROP
-let FIREWALL_IPV6_PRIORITY++
+sudo nft add rule ip my_nft4_table input ip protocol tcp reject with tcp reset
 
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p icmpv6 --icmpv6-type echo-request -j ACCEPT
-let FIREWALL_IPV6_PRIORITY++
+sudo nft add rule ip my_nft4_table input counter reject with icmp type port-unreachable
 
+sudo nft add rule ip my_nft4_table input counter reject with icmp type host-prohibited
 
-sudo firewall-cmd --set-default-zone=drop
+sudo nft add rule ip my_nft4_table TCP tcp dport ${SSH_SETTINGS['Port']} update @ssh_dos_counter { ip saddr ct count over 2 } log prefix \"SSH Attacked:\" drop
 
-sudo firewall-cmd --reload
+sudo nft add rule ip my_nft4_table TCP tcp dport ${SSH_SETTINGS['Port']} accept
 
-check_command_status "ファイアウォールの再起動に失敗しました。"
+# IPv6ルール作成
 
-echo "ファイアウォールの設定が完了しました。"
+sudo nft add rule ip6 my_nft6_table input ct state related,established accept
+
+sudo nft add rule ip6 my_nft6_table input ct state invalid drop
+
+sudo nft add rule ip6 my_nft6_table input iif lo accept
+
+sudo nft add rule ip6 my_nft6_table input meta l4proto ipv6-icmp accept
+
+sudo nft add rule ip6 my_nft6_table input icmpv6 type echo-request ct state new accept
+
+sudo nft add rule ip6 my_nft6_table input tcp flags \& \(fin\|syn\|rst\|ack\) == syn jump TCPV6
+
+sudo nft add rule ip6 my_nft6_table input reject with tcp reset
+
+sudo nft add rule ip6 my_nft6_table input counter reject with icmpv6 type port-unreachable
+
+sudo nft add rule ip6 my_nft6_table input counter reject with icmpv6 type admin-prohibited
+
+sudo systemctl stop firewalld.service
+
+check_command_status "firewalldの停止に失敗しました。"
+
+sudo systemctl disable firewalld.service
+
+check_command_status "firewalldの自動起動の停止に失敗しました。"
+
+sudo systemctl start nftables.service
+
+check_command_status "nftablesの起動に失敗しました。"
+
+sudo systemctl enable nftables.service
+
+check_command_status "nftablesの自動起動の設定に失敗しました。"
+
+echo "nftables（ファイアウォール）の基本設定と反映が完了しました。"
 
 #----------------------------------------------------------#
 # 環境変数などの設定
@@ -562,6 +623,17 @@ echo "環境変数などの設定が完了しました。"
 #----------------------------------------------------------#
 echo "logrotateの設定を行います。"
 
+cat <<'EOF' | sudo tee /etc/cron.daily/logrotate
+#!/bin/sh
+
+/usr/sbin/logrotate -s /var/lib/logrotate/logrotate.status /etc/logrotate.conf
+EXITVALUE=$?
+if [ $EXITVALUE != 0 ]; then
+    /usr/bin/logger -t logrotate "ALERT exited abnormally with [$EXITVALUE]"
+fi
+exit 0
+EOF
+
 sudo cp /etc/logrotate.conf /etc/logrotate.conf.org
 
 check_command_status "logrotateの設定ファイルのバックアップに失敗しました。"
@@ -597,11 +669,11 @@ print_current_time
 
 cd /home/${GENERAL_USER_NAME}/src
 
-change_yum_package install "${VIM_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package install "${VIM_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "vimの必須パッケージのインストールに失敗しました。"
 
-curl ${CURL_RETRY_OPTION} -O ftp://ftp.vim.org/pub/vim/unix/vim-${VIM_VERSION}.tar.bz2
+curl ${CURL_RETRY_OPTION} -O https://ftp.nluug.nl/pub/vim/unix/vim-${VIM_VERSION}.tar.bz2
 
 check_command_status "vimのダウンロードに失敗しました。"
 
@@ -627,17 +699,17 @@ bash ./vim_ccc
 
 check_command_status "vimのconfigureに失敗しました。"
 
-make -j"$(nproc)"
+make
 
 check_command_status "vimのmakeに失敗しました。"
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "vimのmake installに失敗しました。"
 
 sudo ln -s /opt/vim/${VIM_VERSION} /opt/vim/current
 
-sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/vim/current/bin@g' /etc/profile
+sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/vim/current/bin:\3@g' /etc/profile
 
 source /etc/profile
 
@@ -835,23 +907,23 @@ if [ "$IS_MYSQL_INSTALL" -eq 1 ]; then
 
   echo "export OPENSSL_ROOT_DIR=/opt/openssl/current" > ./cmake_ccc
 
-  echo "./configure --prefix=/opt/cmake/${CMAKE_VERSION}" >> ./cmake_ccc
+  echo "./configure --prefix=/opt/cmake/${CMAKE_VERSION} CC=\"/opt/gcc/current/bin/gcc\" CXX=\"/opt/gcc/current/bin/g++\" CXXFLAGS=\"-std=c++11\"" >> ./cmake_ccc
 
   bash ./cmake_ccc
 
   check_command_status "cmakeのconfigureに失敗しました。"
 
-  make -j"$(nproc)"
+  make
 
   check_command_status "cmakeのmakeに失敗しました。"
 
-  sudo make -j"$(nproc)" install
+  sudo make install
 
   check_command_status "cmakeのmake installに失敗しました。"
 
   sudo ln -s /opt/cmake/${CMAKE_VERSION} /opt/cmake/current
 
-  sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/cmake/current/bin@g' /etc/profile
+  sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/cmake/current/bin:\3@g' /etc/profile
 
   source /etc/profile
 
@@ -859,7 +931,7 @@ if [ "$IS_MYSQL_INSTALL" -eq 1 ]; then
 
   cd /home/${GENERAL_USER_NAME}/src
 
-  curl ${CURL_RETRY_OPTION} -L -O https://dev.mysql.com/get/Downloads/MySQL-${MYSQL_MAJOR_VERSION}/mysql-${MYSQL_FULL_VERSION}.tar.gz
+  curl ${CURL_RETRY_OPTION} -L -O https://downloads.mysql.com/archives/get/p/23/file/mysql-${MYSQL_FULL_VERSION}.tar.gz
 
   check_command_status "mysqlのダウンロードに失敗しました。"
 
@@ -877,33 +949,39 @@ if [ "$IS_MYSQL_INSTALL" -eq 1 ]; then
   -DCMAKE_INSTALL_PREFIX=/opt/db/mysql/${MYSQL_FULL_VERSION} \
   -DDEFAULT_CHARSET=utf8mb4 \
   -DDEFAULT_COLLATION=utf8mb4_bin \
-  -DDOWNLOAD_BOOST=1 \
   -DENABLED_LOCAL_INFILE=1 \
-  -DENABLE_DOWNLOADS=1 \
   -DMYSQL_DATADIR=/opt/db/mysql/${MYSQL_FULL_VERSION}/data \
   -DMYSQL_UNIX_ADDR=/opt/db/mysql/${MYSQL_FULL_VERSION}/tmp/mysql.sock \
   -DWITH_EXTRA_CHARSETS=all \
-  -DWITH_BOOST=/tmp/boost \
-  -DDOWNLOAD_BOOST_TIMEOUT=${MYSQL_DOWNLOAD_BOOST_TIMEOUT} \
   -DWITH_SSL=/opt/openssl/current \
-  -DWITH_ZLIB=system \
+  -DZLIB_LIBRARY=/opt/zlib/current/lib/libz.so \
+  -DZLIB_INCLUDE_DIR=/opt/zlib/current/include \
   -DWITH_INNOBASE_STORAGE_ENGINE=1" > ./mysql_ccc
+
+  change_dnf_package install "${MYSQL_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+
+  BEFORE_PATH=`echo $PATH`
+
+  # 一時的にパスを変更してMySQLのmakeを成功させる様にする
+  export PATH=/opt/rh/gcc-toolset-12/root/usr/bin:$PATH
 
   bash ./mysql_ccc
 
   check_command_status "mysqlのcmakeに失敗しました。"
 
-  make -j"$(nproc)"
+  make
 
   check_command_status "mysqlのmakeに失敗しました。"
 
-  sudo make -j"$(nproc)" install
+  sudo make install
 
   check_command_status "mysqlのmake installに失敗しました。"
 
   sudo ln -s /opt/db/mysql/${MYSQL_FULL_VERSION} /opt/db/mysql/current
 
-  sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/db/mysql/current/bin@g' /etc/profile
+  export PATH=$BEFORE_PATH
+
+  sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/db/mysql/current/bin:\3@g' /etc/profile
 
   source /etc/profile
 
@@ -928,14 +1006,10 @@ if [ "$IS_MYSQL_INSTALL" -eq 1 ]; then
   sudo touch /opt/db/mysql/current/log/general.log
 
   sudo chmod -R 755 /opt/db/mysql/current/log
-  
+
   sudo chmod 644 /opt/db/mysql/current/log/*
 
   sudo chown -R mysql:mysql /opt/db/mysql/${MYSQL_FULL_VERSION}
-
-  sudo cp /etc/my.cnf /etc/my.cnf.org
-
-  check_command_status "mysql設定ファイルのバックアップに失敗しました。"
 
   cat <<EOF | sudo tee /etc/my.cnf
 [mysqld]
@@ -955,19 +1029,14 @@ sql_mode=TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY
 user=mysql
 log-error=/opt/db/mysql/current/log/mysqld.log
 pid-file=/opt/db/mysql/current/tmp/mysqld.pid
-symbolic-links=0
 
 server-id=1
 log-bin=/opt/db/mysql/current/bin_log/mysql-bin-log
 log_bin_index=/opt/db/mysql/current/bin_log/bin.list
-binlog_format=mixed
 max_binlog_size=256M
-expire_logs_days=99
+binlog_expire_logs_seconds=8553600
 
 innodb_file_per_table=1
-innodb_large_prefix=1
-innodb_file_format=Barracuda
-innodb_file_format_max=Barracuda
 innodb_default_row_format=DYNAMIC
 innodb_lock_wait_timeout=30
 innodb_status_output=1
@@ -1004,7 +1073,7 @@ port=${MYSQL_PORT}
 socket=/opt/db/mysql/current/tmp/mysql.sock
 EOF
 
-  sudo /opt/db/mysql/current/bin/mysqld --defaults-file=/etc/my.cnf --initialize-insecure --user=mysql
+  sudo /opt/db/mysql/current/bin/mysqld --defaults-file=/etc/my.cnf --initialize-insecure --user=mysql --basedir=/opt/db/mysql/current --datadir=/opt/db/mysql/current/data
 
   check_command_status "mysqlの初期化に失敗しました。"
 
@@ -1046,19 +1115,7 @@ EOF
 }
 EOF
 
-  sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${MYSQL_PORT} -j ACCEPT
-  let FIREWALL_IPV4_PRIORITY++
-  
-  sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${MYSQL_PORT} -j ACCEPT
-  let FIREWALL_IPV6_PRIORITY++
-
-  sudo systemctl daemon-reload
-
-  check_command_status "mysql用のdaemon-reloadに失敗しました。"
-
-  sudo firewall-cmd --reload
-
-  check_command_status "mysql用のファイアウォールの再起動に失敗しました。"
+  sudo nft add rule ip my_nft4_table TCP tcp dport ${MYSQL_PORT} accept
 
   sudo systemctl start mysqld
 
@@ -1068,12 +1125,22 @@ EOF
 
   check_command_status "mysqlの自動起動設定に失敗しました。"
 
-  # 起動直後は、socketファイルが見つからないエラーが発生するので、少し待つ
-  sleep 2
+  # 起動直後は、socketファイルが見つからないエラーが発生するので、しばらくリトライする
+  IS_SUCCESS=0
+  for i in `seq 1 30`
+  do
+    sudo /opt/db/mysql/current/bin/mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -uroot mysql
+    if [ "$?" -eq 0 ]; then
+      IS_SUCCESS=1
+      break;
+    fi
+    sleep 2
+  done
 
-  sudo /opt/db/mysql/current/bin/mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -uroot mysql
-
-  check_command_status "mysqlのタイムゾーン設定に失敗しました。"
+  if [ "$IS_SUCCESS" -eq 0 ]; then
+    echo "mysqlのタイムゾーン設定に失敗しました。"
+    exit 1
+  fi
 
   mysql -uroot --execute="INSTALL PLUGIN validate_password SONAME 'validate_password.so';"
 
@@ -1085,7 +1152,7 @@ EOF
 
   rm -f ~/.mysql_history
 
-  sudo sed -i -e "/^symbolic-links=0$/a default-time-zone='Asia/Tokyo'" /etc/my.cnf
+  sudo sed -i -e "/^pid-file=.\+$/a default-time-zone='Asia/Tokyo'" /etc/my.cnf
 
   sudo sed -i -e "/^general_log_file=.\+$/a plugin-load=/opt/db/mysql/current/lib/plugin/validate_password.so" /etc/my.cnf
 
@@ -1149,17 +1216,17 @@ bash ./nginx_ccc
 
 check_command_status "nginxのconfigureに失敗しました。"
 
-make -j"$(nproc)"
+make
 
 check_command_status "nginxのmakeに失敗しました。"
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "nginxのmake installに失敗しました。"
 
 sudo ln -s /opt/nginx/${NGINX_VERSION} /opt/nginx/current
 
-sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/nginx/current/sbin@g' /etc/profile
+sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/nginx/current/bin:\3@g' /etc/profile
 
 source /etc/profile
 
@@ -1184,7 +1251,7 @@ server {
   listen ${HTTP_PORT};
   server_name ${HOST_NAME};
   root ${DOCUMENT_ROOT};
-  index index.php;
+  index index.php index.html;
 
   location / {
     try_files \$uri \$uri/ /index.php\$is_args\$args;
@@ -1278,48 +1345,17 @@ cat <<'EOF' | sudo tee /etc/logrotate.d/nginx
 }
 EOF
 
-sudo firewall-cmd --direct --permanent --add-chain ipv4 filter HTTPV4
+sudo nft add set ip my_nft4_table httpv4_dos_counter { type ipv4_addr\; size 65535\; flags dynamic,timeout\; timeout 2m\; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTP_PORT} -j HTTPV4
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add set ip6 my_nft6_table httpv6_dos_counter { type ipv6_addr\; size 65535\; flags dynamic,timeout\; timeout 2m\; }
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter HTTPV4 $FIREWALL_IPV4_PRIORITY -m hashlimit --hashlimit 1/m --hashlimit-burst 10 --hashlimit-mode srcip --hashlimit-htable-expire 120000 --hashlimit-name http-ipv4-con -j RETURN
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add rule ip my_nft4_table TCP tcp dport ${HTTP_PORT} update @httpv4_dos_counter { ip saddr limit rate over 20/minute burst 1 packets } log prefix \"HTTPV4 Attacked:\" drop
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter HTTPV4 $FIREWALL_IPV4_PRIORITY -j LOG --log-level info --log-prefix '[ HTTP IPV4 attack ]:'
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add rule ip my_nft4_table TCP tcp dport ${HTTP_PORT} accept
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter HTTPV4 $FIREWALL_IPV4_PRIORITY -j DROP
-let FIREWALL_IPV4_PRIORITY++
+sudo nft add rule ip6 my_nft6_table TCPV6 tcp dport ${HTTP_PORT} update @httpv6_dos_counter { ip6 saddr limit rate over 20/minute burst 1 packets } log prefix \"HTTPV6 Attacked:\" drop
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTP_PORT} -j ACCEPT
-let FIREWALL_IPV4_PRIORITY++
-
-
-sudo firewall-cmd --direct --permanent --add-chain ipv6 filter HTTPV6
-
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTP_PORT} -j HTTPV6
-let FIREWALL_IPV6_PRIORITY++
-
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter HTTPV6 $FIREWALL_IPV6_PRIORITY -m hashlimit --hashlimit 1/m --hashlimit-burst 10 --hashlimit-mode srcip --hashlimit-htable-expire 120000 --hashlimit-name http-ipv6-con -j RETURN
-let FIREWALL_IPV6_PRIORITY++
-
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter HTTPV6 $FIREWALL_IPV6_PRIORITY -j LOG --log-level info --log-prefix '[ HTTP IPV6 attack ]:'
-let FIREWALL_IPV6_PRIORITY++
-
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter HTTPV6 $FIREWALL_IPV6_PRIORITY -j DROP
-let FIREWALL_IPV6_PRIORITY++
-
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTP_PORT} -j ACCEPT
-let FIREWALL_IPV6_PRIORITY++
-
-sudo systemctl daemon-reload
-
-check_command_status "nginx用のdaemon-reloadに失敗しました。"
-
-sudo firewall-cmd --reload
-
-check_command_status "nginx用のファイアウォールの再起動に失敗しました。"
+sudo nft add rule ip6 my_nft6_table TCPV6 tcp dport ${HTTP_PORT} accept
 
 print_current_time
 
@@ -1359,35 +1395,35 @@ echo "./configure \
 --without-pdo-sqlite \
 --without-pear" > ./php_ccc
 
-change_yum_package install "${PHP_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package install "${PHP_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "PHPの必須パッケージのインストールに失敗しました。"
 
 # 「--with-openssl」で指定出来なくなったので、インストールしたOpenSSLの場所を教える為に必要
-export PKG_CONFIG_PATH=/opt/openssl/current/lib/pkgconfig
+export PKG_CONFIG_PATH=/opt/openssl/current/lib64/pkgconfig
 
 bash ./php_ccc
 
 check_command_status "PHPのconfigureに失敗しました。"
 
-make -j"$(nproc)"
+make
 
 check_command_status "PHPのmakeに失敗しました。"
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "PHPのmake installに失敗しました。"
 
 sudo ln -s /opt/php/${PHP_VERSION} /opt/php/current
 
-sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/php/current/bin@g' /etc/profile
+sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/php/current/bin:\3@g' /etc/profile
 
 source /etc/profile
 
 check_command_status "PHPの/etc/profileの反映に失敗しました。"
 
 if [ "$PHP_INI_CURL_CAINFO" != "" ]; then
-  sudo curl ${CURL_RETRY_OPTION} https://curl.haxx.se/ca/cacert.pem -o ${PHP_INI_CURL_CAINFO}
+  sudo curl ${CURL_RETRY_OPTION} https://curl.se/ca/cacert.pem -o ${PHP_INI_CURL_CAINFO}
 
   check_command_status "PHPのcurl用のcacert.pemのダウンロードに失敗しました。"
 
@@ -1726,37 +1762,37 @@ if [ "$IS_PYTHON_INSTALL" -eq 1 ]; then
 
   cd /home/${GENERAL_USER_NAME}/src
 
-  curl ${CURL_RETRY_OPTION} -O https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz
+  curl ${CURL_RETRY_OPTION} -O https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}a1.tar.xz
 
   check_command_status "Pythonのダウンロードに失敗しました。"
 
-  tar Jxvf Python-${PYTHON_VERSION}.tar.xz
+  tar Jxvf Python-${PYTHON_VERSION}a1.tar.xz
 
   check_command_status "Pythonファイルの解凍に失敗しました。"
 
-  cd Python-${PYTHON_VERSION}
+  cd Python-${PYTHON_VERSION}a1
 
-  change_yum_package install "${PYTHON_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+  change_dnf_package install "${PYTHON_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
   check_command_status "Pythonの必須パッケージのインストールに失敗しました。"
 
-  echo "./configure --prefix=/opt/python/${PYTHON_VERSION} --with-openssl=/opt/openssl/current --with-ensurepip=install --enable-optimizations" > ./python_ccc
+  echo "./configure --prefix=/opt/python/${PYTHON_VERSION} --with-openssl=/opt/openssl/current --with-openssl-rpath=auto --with-ensurepip=install --enable-optimizations" > ./python_ccc
 
   bash ./python_ccc
 
   check_command_status "Pythonのconfigureに失敗しました。"
 
-  make -j"$(nproc)"
+  make
 
   check_command_status "Pythonのmakeに失敗しました。"
 
-  sudo make -j"$(nproc)" install
+  sudo make install
 
   check_command_status "Pythonのmake installに失敗しました。"
 
   sudo ln -s /opt/python/${PYTHON_VERSION} /opt/python/current
 
-  sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/python/current/bin@g' /etc/profile
+  sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/python/current/bin:\3@g' /etc/profile
 
   source /etc/profile
 
@@ -1786,7 +1822,7 @@ print_current_time
 
 cd /home/${GENERAL_USER_NAME}/src
 
-curl ${CURL_RETRY_OPTION} -L https://github.com/git/git/archive/v${GIT_VERSION}.tar.gz -o git-${GIT_VERSION}.tar.gz
+curl ${CURL_RETRY_OPTION} -L https://github.com/git/git/archive/refs/tags/v${GIT_VERSION}.tar.gz -o git-${GIT_VERSION}.tar.gz
 
 check_command_status "gitのダウンロードに失敗しました。"
 
@@ -1796,7 +1832,7 @@ check_command_status "gitファイルの解凍に失敗しました。"
 
 cd git-${GIT_VERSION}
 
-change_yum_package install "${GIT_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
+change_dnf_package install "${GIT_REQUIRE_PACKAGE}" ${EXEC_USER_NAME}
 
 check_command_status "gitの必須パッケージのインストールに失敗しました。"
 
@@ -1812,17 +1848,17 @@ bash ./git_ccc
 
 check_command_status "gitのconfigureに失敗しました。"
 
-make -j"$(nproc)" all
+make all
 
 check_command_status "gitのmakeに失敗しました。"
 
-sudo make -j"$(nproc)" install
+sudo make install
 
 check_command_status "gitのmake installに失敗しました。"
 
 sudo ln -s /opt/git/${GIT_VERSION} /opt/git/current
 
-sudo sed -i -e 's@^\(export PATH=\$PATH:.\+\)$@\1:/opt/git/current/bin@g' /etc/profile
+sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/git/current/bin:\3@g' /etc/profile
 
 source /etc/profile
 
@@ -1945,15 +1981,16 @@ print_current_time
 
 cd /home/${GENERAL_USER_NAME}/src
 
-change_yum_package install unzip ${EXEC_USER_NAME}
+change_dnf_package install unzip ${EXEC_USER_NAME}
 
 check_command_status "unzipコマンドのインストールに失敗しました。"
 
-curl ${CURL_RETRY_OPTION} -L -O https://github.com/googleapis/google-api-php-client/releases/download/v${GOOGLE_API_PHP_CLIENT_VERSION}/google-api-php-client-${GOOGLE_API_PHP_CLIENT_VERSION}.zip
+# PHP8.3用をダウンロード
+curl ${CURL_RETRY_OPTION} -L https://github.com/googleapis/google-api-php-client/releases/download/v${GOOGLE_API_PHP_CLIENT_VERSION}/google-api-php-client--PHP8.3.zip -o google-api-php-client-${GOOGLE_API_PHP_CLIENT_VERSION}.zip
 
 check_command_status "google-api-php-clientのダウンロードに失敗しました。"
 
-unzip google-api-php-client-${GOOGLE_API_PHP_CLIENT_VERSION}.zip
+unzip google-api-php-client-${GOOGLE_API_PHP_CLIENT_VERSION}.zip -d google-api-php-client-${GOOGLE_API_PHP_CLIENT_VERSION}
 
 sudo mkdir -p /opt/google-api-php-client
 
@@ -2017,7 +2054,7 @@ echo "rsyncコマンドのインストールを行います。"
 
 print_current_time
 
-change_yum_package install rsync ${EXEC_USER_NAME}
+change_dnf_package install rsync ${EXEC_USER_NAME}
 
 check_command_status "rsyncコマンドのインストールに失敗しました。"
 
@@ -2146,31 +2183,18 @@ EOF
   echo "本番サーバへのアップ手順設定が完了しました。"
 fi
 
-#----------------------------------------------------------#
+#---------------------------------------------------------------------#
 # Let's Encryptの導入
-#----------------------------------------------------------#
+# DNSの正引きの設定を終えてからじゃないとcertbotでエラーになるので注意
+# @see https://techwiki.u-ff.com/centos/certbot/migration
+#---------------------------------------------------------------------#
 if [ "$IS_LETS_ENCRYPT" -eq 1 ]; then
   echo "Let's Encryptの導入を行います。"
 
   print_current_time
 
-  cd /home/${GENERAL_USER_NAME}/src
-
-  curl ${CURL_RETRY_OPTION} -L https://github.com/certbot/certbot/archive/v${CERTBOT_VERSION}.tar.gz -o certbot-${CERTBOT_VERSION}.tar.gz
-
-  check_command_status "certbotのダウンロードに失敗しました。"
-
-  tar zxvf ./certbot-${CERTBOT_VERSION}.tar.gz
-
-  check_command_status "certbotファイルの解凍に失敗しました。"
-
-  sudo mkdir -p /opt/certbot
-
-  sudo cp -r certbot-${CERTBOT_VERSION} /opt/certbot/${CERTBOT_VERSION}
-
-  sudo ln -s /opt/certbot/${CERTBOT_VERSION} /opt/certbot/current
-
-  cd /opt/certbot/${CERTBOT_VERSION}
+  # certbotを https://github.com/certbot からソースをダウンロードしてインストールすることも可能だが、certbotコマンド実行時にpythonエラーが発生して修正出来なかったのでパッケージからインストール
+  sudo dnf install certbot python3-certbot-nginx
 
   sudo cp /opt/nginx/current/conf.d/http.conf /opt/nginx/current/conf.d/http.conf.org
 
@@ -2180,11 +2204,13 @@ server {
   server_name ${HOST_NAME};
   root ${DOCUMENT_ROOT};
 
+  # 既に同じドメインで運用中のWebサーバがある場合だと、ドキュメントルートを変えないと上手くいかない？ので変更している
   location ^~ /.well-known/acme-challenge/ {
+    root /opt/challenge;
     default_type "text/plain";
   }
 
-  index index.php;
+  index index.php index.html;
 
   location / {
     try_files \$uri \$uri/ /index.php\$is_args\$args;
@@ -2203,58 +2229,32 @@ EOF
 
   sudo systemctl restart nginx
 
-  check_command_status "Let's Encrypt certbot-auto用のnginxの再起動に失敗しました。"
+  check_command_status "Let's Encrypt certbot用のnginxの再起動に失敗しました。"
 
-  sudo mkdir -p ${DOCUMENT_ROOT}/.well-known/acme-challenge
+  sudo mkdir -p /opt/challenge/.well-known/acme-challenge
 
-  sudo chmod -R 777 ${DOCUMENT_ROOT}/.well-known
+  sudo chmod -R 777 /opt/challenge
 
-  sudo rm -rf /var/cache/yum/*
+  sudo rm -rf /var/cache/dnf/*
 
-  sudo yum clean all
+  sudo dnf clean all
 
-  sudo ./certbot-auto certonly --preferred-chain "ISRG Root X1" --webroot -w ${DOCUMENT_ROOT} -d ${HOST_NAME} --email ${SYSTEM_ADMINISTRATOR_MAIL_ADDRESS} --agree-tos -n --force-renewal
+  sudo certbot certonly --preferred-chain "ISRG Root X1" --webroot -w /opt/challenge -d ${HOST_NAME} --email ${SYSTEM_ADMINISTRATOR_MAIL_ADDRESS} --agree-tos -n --force-renewal --rsa-key-size ${RSA_KEY_SIZE}
 
-  check_command_status "certbot-autoの実行に失敗しました。"
+  check_command_status "certbotの実行に失敗しました。"
 
   # PFSのためのDHパラメータの生成
   sudo mkdir -p /opt/nginx/current/ssl
 
-  /opt/openssl/current/bin/openssl dhparam 2048 | sudo tee /opt/nginx/current/ssl/dh2048.pem
+  /opt/openssl/current/bin/openssl dhparam ${RSA_KEY_SIZE} | sudo tee /opt/nginx/current/ssl/dh${RSA_KEY_SIZE}.pem
 
-  sudo firewall-cmd --direct --permanent --add-chain ipv4 filter HTTPSV4
+  sudo nft add rule ip my_nft4_table TCP tcp dport ${HTTPS_PORT} update @httpv4_dos_counter { ip saddr limit rate over 20/minute burst 1 packets } log prefix \"HTTPV4 Attacked:\" drop
 
-  sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTPS_PORT} -j HTTPSV4
-  let FIREWALL_IPV4_PRIORITY++
+  sudo nft add rule ip my_nft4_table TCP tcp dport ${HTTPS_PORT} accept
 
-  sudo firewall-cmd --direct --permanent --add-rule ipv4 filter HTTPSV4 $FIREWALL_IPV4_PRIORITY -m hashlimit --hashlimit 1/m --hashlimit-burst 10 --hashlimit-mode srcip --hashlimit-htable-expire 120000 --hashlimit-name https-ipv4-con -j RETURN 
-  let FIREWALL_IPV4_PRIORITY++
+  sudo nft add rule ip6 my_nft6_table TCPV6 tcp dport ${HTTPS_PORT} update @httpv6_dos_counter { ip6 saddr limit rate over 20/minute burst 1 packets } log prefix \"HTTPV6 Attacked:\" drop
 
-  sudo firewall-cmd --direct --permanent --add-rule ipv4 filter HTTPSV4 $FIREWALL_IPV4_PRIORITY -j LOG --log-level info --log-prefix '[ HTTPS IPV4 attack ]:'
-  let FIREWALL_IPV4_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv4 filter HTTPSV4 $FIREWALL_IPV4_PRIORITY -j DROP 
-  let FIREWALL_IPV4_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTPS_PORT} -j ACCEPT
-  let FIREWALL_IPV4_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-chain ipv6 filter HTTPSV6
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTPS_PORT} -j HTTPSV6
-  let FIREWALL_IPV6_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv6 filter HTTPSV6 $FIREWALL_IPV6_PRIORITY -m hashlimit --hashlimit 1/m --hashlimit-burst 10 --hashlimit-mode srcip --hashlimit-htable-expire 120000 --hashlimit-name https-ipv6-con -j RETURN 
-  let FIREWALL_IPV6_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv6 filter HTTPSV6 $FIREWALL_IPV6_PRIORITY -j LOG --log-level info --log-prefix '[ HTTPS IPV6 attack ]:'
-  let FIREWALL_IPV6_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv6 filter HTTPSV6 $FIREWALL_IPV6_PRIORITY -j DROP
-  let FIREWALL_IPV6_PRIORITY++
-
-  sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -p tcp -m tcp -m state --state NEW --dport ${HTTPS_PORT} -j ACCEPT
-  let FIREWALL_IPV6_PRIORITY++
+  sudo nft add rule ip6 my_nft6_table TCPV6 tcp dport ${HTTPS_PORT} accept
 
   sudo cp /opt/nginx/current/conf.d/http.conf /opt/nginx/current/conf.d/http.conf2.org
 
@@ -2272,8 +2272,9 @@ EOF
 
   cat <<EOF | sudo tee /opt/nginx/current/conf.d/https.conf
 server {
-  listen ${HTTPS_PORT} ssl http2 default_server;
-  listen [::]:${HTTPS_PORT} ssl http2 default_server;
+  listen ${HTTPS_PORT} ssl default_server;
+  listen [::]:${HTTPS_PORT} ssl default_server;
+  http2 on;
 
   server_name ${HOST_NAME};
 
@@ -2284,30 +2285,24 @@ server {
   ssl_session_cache shared:ssl:10m;
   ssl_session_tickets off;
 
-  ssl_dhparam /opt/nginx/current/ssl/dh2048.pem;
+  ssl_dhparam /opt/nginx/current/ssl/dh${RSA_KEY_SIZE}.pem;
 
   ssl_protocols TLSv1.2 TLSv1.3;
-  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305;
   ssl_prefer_server_ciphers on;
+  ssl_ecdh_curve secp384r1;
 
   # 31536000は365日
   add_header Strict-Transport-Security "max-age=31536000;";
 
-  # OCSPステープリングを有効にする。
-  ssl_stapling on;
-  ssl_stapling_verify on;
-  resolver ${IPV4_DNS_LIST} valid=300s;
-  resolver_timeout 10s;
-
-  ssl_trusted_certificate /etc/letsencrypt/live/${HOST_NAME}/chain.pem;
-
   root ${DOCUMENT_ROOT};
 
-  location ^~ '/.well-known/acme-challenge' {
+  location ^~ /.well-known/acme-challenge {
+    root /opt/challenge;
     default_type "text/plain";
   }
 
-  index index.php;
+  index index.php index.html;
 
   location / {
     try_files \$uri \$uri/ /index.php\$is_args\$args;
@@ -2328,20 +2323,16 @@ server {
 }
 EOF
 
-  sudo systemctl daemon-reload
-
-  check_command_status "Let's Encrypt用のdaemon-reloadに失敗しました。"
-
-  sudo firewall-cmd --reload
-
-  check_command_status "Let's Encrypt用のファイアウォールの再起動に失敗しました。"
-
   sudo systemctl restart nginx
 
   check_command_status "Let's Encrypt用のnginxの再起動に失敗しました。"
 
+  systemctl stop certbot-renew.timer
+
+  systemctl disable certbot-renew.timer
+
   # 後で修正するのでコメントアウトしておく
-  echo "######comment_out! 00 03 1-31/5 * * root /opt/certbot/current/certbot-auto renew -q --no-self-upgrade --deploy-hook \"/usr/bin/systemctl restart nginx\"" | sudo tee -a /etc/crontab
+  echo "######comment_out! 00 03 1-31/5 * * root /usr/bin/certbot renew -q --preferred-chain \"ISRG Root X1\" --rsa-key-size ${RSA_KEY_SIZE} --deploy-hook \"/usr/bin/systemctl restart nginx\" > /etc/letsencrypt/certbot.log" | sudo tee -a /etc/crontab
 
   print_current_time
 
@@ -2349,63 +2340,43 @@ EOF
 fi
 
 #----------------------------------------------------------#
-# ファイアウォールの残設定
+# dnfの設定
 #----------------------------------------------------------#
-echo "ファイアウォールの残設定を行います。"
+echo "dnfの設定を行います。"
 
 print_current_time
 
-sudo firewall-cmd --direct --permanent --add-rule ipv4 filter INPUT_direct $FIREWALL_IPV4_PRIORITY -j REJECT --reject-with icmp-host-prohibited
-let FIREWALL_IPV4_PRIORITY++
+sudo cp /etc/dnf/dnf.conf /etc/dnf/dnf.conf.org
 
-sudo firewall-cmd --direct --permanent --add-rule ipv6 filter INPUT_direct $FIREWALL_IPV6_PRIORITY -j REJECT --reject-with icmp6-adm-prohibited
-let FIREWALL_IPV6_PRIORITY++
+check_command_status "dnf設定ファイルのバックアップに失敗しました。"
 
-sudo firewall-cmd --reload
+sudo sed -i -e 's/^keepcache.*=.*/keepcache=1/g' /etc/dnf/dnf.conf
 
-check_command_status "ファイアウォールの残設定用のファイアウォールの再起動に失敗しました。"
+change_dnf_package install dnf-automatic ${EXEC_USER_NAME}
 
-print_current_time
+check_command_status "dnf-automaticのインストールに失敗しました。"
 
-echo "ファイアウォールの残設定が完了しました。"
+sudo cp /etc/dnf/automatic.conf /etc/dnf/automatic.conf.org
 
-#----------------------------------------------------------#
-# yumの設定
-#----------------------------------------------------------#
-echo "yumの設定を行います。"
+check_command_status "dnf-automatic設定ファイルのバックアップに失敗しました。"
 
-print_current_time
+sudo sed -i -e 's/^download_updates.*=.*/download_updates = no/g' /etc/dnf/automatic.conf
 
-sudo cp /etc/yum.conf /etc/yum.conf.org
+sudo sed -i -e 's/^apply_updates.*=.*/apply_updates = no/g' /etc/dnf/automatic.conf
 
-check_command_status "yum設定ファイルのバックアップに失敗しました。"
+sudo sed -i -e 's/^emit_via.*=.*/emit_via = email/g' /etc/dnf/automatic.conf
 
-sudo sed -i -e 's/^keepcache.*=.*/keepcache=1/g' /etc/yum.conf
+sudo sed -i -e 's/^email_to.*=.*/email_to = '${SYSTEM_ADMINISTRATOR_MAIL_ADDRESS}'/g' /etc/dnf/automatic.conf
 
-change_yum_package install yum-cron ${EXEC_USER_NAME}
+# リポジトリデータのダウンロードとメール通知のみ行う
+sudo systemctl start dnf-automatic-notifyonly.timer
 
-check_command_status "yum-cronのインストールに失敗しました。"
+check_command_status "dnf-automatic-notifyonly.timerの起動に失敗しました。"
 
-sudo cp /etc/yum/yum-cron.conf /etc/yum/yum-cron.conf.org
+sudo systemctl enable dnf-automatic-notifyonly.timer
 
-check_command_status "yum-cron設定ファイルのバックアップに失敗しました。"
-
-sudo sed -i -e 's/^download_updates.*=.*/download_updates = no/g' /etc/yum/yum-cron.conf
-
-sudo sed -i -e 's/^apply_updates.*=.*/apply_updates = no/g' /etc/yum/yum-cron.conf
-
-sudo sed -i -e 's/^emit_via.*=.*/emit_via = email/g' /etc/yum/yum-cron.conf
-
-sudo sed -i -e 's/^email_to.*=.*/email_to = '${SYSTEM_ADMINISTRATOR_MAIL_ADDRESS}'/g' /etc/yum/yum-cron.conf
-
-sudo systemctl start yum-cron
-
-check_command_status "yum-cronの起動に失敗しました。"
-
-sudo systemctl enable yum-cron
-
-check_command_status "yum-cronの自動起動の設定に失敗しました。"
+check_command_status "dnf-automatic-notifyonly.timerの自動起動の設定に失敗しました。"
 
 print_current_time
 
-echo "yumの設定が完了しました。"
+echo "dnfの設定が完了しました。"

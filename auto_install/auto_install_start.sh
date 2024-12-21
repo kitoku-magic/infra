@@ -7,8 +7,8 @@
 # よって、実行対象のサーバー環境を大幅に変更する為
 # 実行前には、改めて考え直して下さい。
 #
-# 対象OS：minimal installしたCentOS7系
-# （6系はNG、8系は未確認です）
+# 対象OS：minimal installしたRocky Linux9系
+# （8系は未確認です）
 #----------------------------------------------------------#
 
 #----------------------------------------------------------#
@@ -27,6 +27,8 @@ check_command_status "初期処理が失敗しました。"
 # 各種パラメータ情報を読み込む
 source ./parameter_"${1}".conf
 
+# 実行確認を省略してログを出力したい場合には、以下をコメントアウトする
+#######################ここから#############################
 # 処理を続けるか否かの確認（対話式）
 echo "------------------------------------"
 echo "処理を続けますか？"
@@ -47,6 +49,7 @@ if [ "$INPUT" != "yes" ]; then
   echo "処理を終了します。" 1>&2
   exit 1
 fi
+#######################ここまで#############################
 
 print_current_time
 
@@ -111,7 +114,7 @@ echo "起動時のカーネルオプションを設定しました。"
 #----------------------------------------------------------#
 echo "ネットワークとホスト名の設定を行います。"
 
-cp /etc/sysconfig/network-scripts/ifcfg-${NETWORK_DEVICE_NAME} /etc/sysconfig/network-scripts/ifcfg-${NETWORK_DEVICE_NAME}.org
+cp /etc/NetworkManager/system-connections/${NETWORK_DEVICE_NAME}.nmconnection /etc/NetworkManager/system-connections/${NETWORK_DEVICE_NAME}.nmconnection.org
 
 check_command_status "ネットワークインタフェース設定ファイルのバックアップに失敗しました。"
 
@@ -150,7 +153,7 @@ IPV4_SETTINGS[${IPV4_DNS_SEARCH_KEY}]=$IPV4_DNS_SEARCH
 for k in ${IPV4_KEY_SETTINGS[@]}
 do
   if [ "${IPV4_SETTINGS[$k]}" != "" ]; then
-    nmcli connection modify $NETWORK_CONNECTION_NAME $k ${IPV4_SETTINGS[$k]}
+    nmcli connection modify "$NETWORK_CONNECTION_NAME" $k ${IPV4_SETTINGS[$k]}
 
     check_command_status "${k}の設定に失敗しました。"
   fi
@@ -174,38 +177,30 @@ sed -i -e "/^127\.0\.0\.1.\+/s/$/ ${HOST_NAME}/g" /etc/hosts
 
 if [ "$IS_IPV6_SETTING" -eq 1 ]; then
   sed -i -e "/^::1.\+/s/$/ ${HOST_NAME}/g" /etc/hosts
+
+  IPV6_ADDRESS_SETTINGS=("${IPV6_ADDRESS_KEY}" "${IPV6_ADDRESS_VALUE}")
+  IPV6_GATEWAY_SETTINGS=("${IPV6_GATEWAY_KEY}" "${IPV6_GATEWAY_VALUE}")
+  IPV6_METHOD_SETTINGS=("${IPV6_METHOD_KEY}" "${IPV6_METHOD_VALUE}")
+  IPV6_DNS_SETTINGS=("${IPV6_DNS_KEY}" "${IPV6_DNS_VALUE}")
+  IPV6_IGNORE_AUTO_DNS_SETTINGS=("${IPV6_IGNORE_AUTO_DNS_KEY}" "${IPV6_IGNORE_AUTO_DNS_VALUE}")
+  IPV6_SETTINGS=(
+    ${IPV6_ADDRESS_SETTINGS[@]}
+    ${IPV6_GATEWAY_SETTINGS[@]}
+    ${IPV6_METHOD_SETTINGS[@]}
+    ${IPV6_DNS_SETTINGS[@]}
+    ${IPV6_IGNORE_AUTO_DNS_SETTINGS[@]}
+  )
+
+  IPV6_SETTING_LENGTH=${#IPV6_SETTINGS[@]}
+  for ((i=0; i<$IPV6_SETTING_LENGTH; i=i+2))
+  do
+    if [ "${IPV6_SETTINGS[i+1]}" != "" ]; then
+      nmcli connection modify "$NETWORK_CONNECTION_NAME" ${IPV6_SETTINGS[i]} ${IPV6_SETTINGS[i+1]}
+
+      check_command_status "${IPV6_SETTINGS[i]}の設定に失敗しました。"
+    fi
+  done
 fi
-
-IPV6_METHOD_KEY='ipv6.method'
-IPV6_ADDRESSES_KEY='ipv6.addresses'
-IPV6_GATEWAY_KEY='ipv6.gateway'
-IPV6_DNS_KEY='ipv6.dns'
-IPV6_IGNORE_AUTO_DNS_KEY='ipv6.ignore-auto-dns'
-
-declare -a IPV6_KEY_SETTINGS=(
-  ${IPV6_METHOD_KEY}
-  ${IPV6_ADDRESSES_KEY}
-  ${IPV6_GATEWAY_KEY}
-  ${IPV6_DNS_KEY}
-  ${IPV6_IGNORE_AUTO_DNS_KEY}
-)
-
-declare -A IPV6_SETTINGS
-
-IPV6_SETTINGS[${IPV6_METHOD_KEY}]=$IPV6_METHOD
-IPV6_SETTINGS[${IPV6_ADDRESSES_KEY}]=$IPV6_ADDRESS
-IPV6_SETTINGS[${IPV6_GATEWAY_KEY}]=$IPV6_GATEWAY
-IPV6_SETTINGS[${IPV6_DNS_KEY}]=$IPV6_DNS
-IPV6_SETTINGS[${IPV6_IGNORE_AUTO_DNS_KEY}]=$IPV6_IGNORE_AUTO_DNS
-
-for k in ${IPV6_KEY_SETTINGS[@]}
-do
-  if [ "${IPV6_SETTINGS[$k]}" != "" ]; then
-    nmcli connection modify $NETWORK_CONNECTION_NAME $k ${IPV6_SETTINGS[$k]}
-
-    check_command_status "${k}の設定に失敗しました。"
-  fi
-done
 
 cp /etc/sysctl.conf /etc/sysctl.conf.org
 
@@ -224,9 +219,9 @@ sysctl -p
 check_command_status "カーネルパラメータの反映に失敗しました。"
 
 # 後で戻す
-nmcli connection modify $NETWORK_CONNECTION_NAME ${IPV4_DNS_KEY} "${IPV4_DNS} 8.8.8.8 8.8.4.4"
+nmcli connection modify "$NETWORK_CONNECTION_NAME" ${IPV4_DNS_KEY} "${IPV4_DNS} 8.8.8.8 8.8.4.4"
 
-systemctl restart network.service
+nmcli con up "${NETWORK_CONNECTION_NAME}"
 
 check_command_status "networkの再起動に失敗しました。"
 
@@ -239,28 +234,30 @@ echo "ネットワークとホスト名の設定が完了しました。"
 #----------------------------------------------------------#
 # 不要なパッケージのアンインストール
 #----------------------------------------------------------#
-echo "不要なYUMパッケージのアンインストールを行います。"
+echo "不要なdnfパッケージのアンインストールを行います。"
 
-echo 'retries=60' >> /etc/yum.conf
+echo 'retries=60' >> /etc/dnf/dnf.conf
 
-echo 'timeout=600' >> /etc/yum.conf
+echo 'timeout=600' >> /etc/dnf/dnf.conf
 
-echo 'include_only=.jp' >> /etc/yum/pluginconf.d/fastestmirror.conf
+echo 'include_only=.jp' >> /etc/dnf/plugins/fastestmirror.conf
 
-change_yum_package remove "${YUM_REMOVE_PACKAGE}"
+change_dnf_package remove "${DNF_REMOVE_PACKAGE}"
 
-check_command_status "不要なYUMパッケージのアンインストールに失敗しました。"
+check_command_status "不要なdnfパッケージのアンインストールに失敗しました。"
 
-echo "不要なYUMパッケージのアンインストールが完了しました。"
+echo "不要なdnfパッケージのアンインストールが完了しました。"
 
 #----------------------------------------------------------#
-# YUMリポジトリの追加
+# dnfリポジトリの追加
 #----------------------------------------------------------#
-echo "YUMリポジトリの追加を行います。"
+echo "dnfリポジトリの追加を行います。"
 
-change_yum_package install "${ADD_YUM_REPOSITORY}"
+dnf config-manager --set-enabled crb
 
-check_command_status "YUMリポジトリの追加に失敗しました。"
+change_dnf_package install "${ADD_DNF_REPOSITORY}"
+
+check_command_status "dnfリポジトリの追加に失敗しました。"
 
 if [ -f /etc/yum.repos.d/epel.repo ]; then
   cp /etc/yum.repos.d/epel.repo /etc/yum.repos.d/epel.repo.org
@@ -274,29 +271,44 @@ if [ -f /etc/yum.repos.d/epel.repo ]; then
   check_command_status "EPELリポジトリのbaseurl行の編集に失敗しました。"
 fi
 
-echo "YUMリポジトリの追加が完了しました。"
+echo "dnfリポジトリの追加が完了しました。"
+
+#----------------------------------------------------------#
+# 追加パッケージのインストール
+#----------------------------------------------------------#
+echo "追加パッケージのインストールを行います。"
+
+print_current_time
+
+change_dnf_package install "${DNF_ADD_PACKAGE}"
+
+check_command_status "追加パッケージのインストールに失敗しました。"
+
+print_current_time
+
+echo "追加パッケージのインストールが完了しました。"
 
 #----------------------------------------------------------#
 # システムのアップデート
 #----------------------------------------------------------#
-echo "YUMパッケージのアップデートを行います。"
+echo "dnfパッケージのアップデートを行います。"
 
 print_current_time
 
-change_yum_package update
+change_dnf_package update
 
-check_command_status "YUMパッケージのアップデートに失敗しました。"
+check_command_status "dnfパッケージのアップデートに失敗しました。"
 
 print_current_time
 
-echo "YUMパッケージのアップデートが完了しました。"
+echo "dnfパッケージのアップデートが完了しました。"
 
 #----------------------------------------------------------#
 # 時刻の設定と同期
 #----------------------------------------------------------#
 echo "時刻の同期設定を行います。"
 
-change_yum_package install chrony
+change_dnf_package install chrony
 
 systemctl restart chronyd
 
@@ -400,7 +412,57 @@ rm -rf /home/$GENERAL_USER_NAME/auto_install_start_functions.sh
 rm -rf /home/$GENERAL_USER_NAME/auto_install_start_by_${GENERAL_USER_NAME}.sh
 rm -rf /home/$GENERAL_USER_NAME/typescript
 
-nmcli connection modify $NETWORK_CONNECTION_NAME ${IPV4_DNS_KEY} "${IPV4_DNS_LIST}"
+#----------------------------------------------------------#
+# nftablesの永続化
+#----------------------------------------------------------#
+
+echo "nftablesの永続化を行います。"
+
+cp /etc/sysconfig/nftables.conf /etc/sysconfig/nftables.conf.org
+
+# sudoでは実行出来ない為、ここで実施
+nft list ruleset > /etc/sysconfig/nftables.conf
+
+check_command_status "nftのルールの永続化に失敗しました。"
+
+echo "nftablesの永続化が完了しました。"
+
+systemctl restart nftables.service
+
+#----------------------------------------------------------#
+# バックアップ（org）ファイルの移動
+#----------------------------------------------------------#
+
+echo "バックアップ（org）ファイルを移動します。"
+
+org_backup_dir="/root/backup_file"
+
+mkdir -p $org_backup_dir
+
+find / -not -path "$org_backup_dir" -type f -name "*.org" -print | while read -r file_name
+do
+  # 同一のorgファイルにしない様にする為、フルパス名の一部を編集してファイル名にする
+  full_path_file_name=$(echo "$file_name" | cut -c 2- | sed -e 's@/@_@g')
+  echo "$file_name"
+  echo "${org_backup_dir}/${full_path_file_name}"
+  mv $file_name ${org_backup_dir}/${full_path_file_name}
+done
+
+echo "バックアップ（org）ファイルを移動しました。"
+
+#----------------------------------------------------------#
+# その他の処理
+#----------------------------------------------------------#
+
+nmcli connection modify "$NETWORK_CONNECTION_NAME" ${IPV4_DNS_KEY} "${IPV4_DNS_LIST}"
+
+nmcli con up "${NETWORK_CONNECTION_NAME}"
+
+check_command_status "networkの再起動に失敗しました。"
+
+systemctl restart NetworkManager.service
+
+check_command_status "NetworkManagerの再起動に失敗しました。"
 
 # crontabのコメントアウトを外す
 sed -i -e 's/^######comment_out! \(.*\)/\1/g' /etc/crontab
@@ -411,9 +473,10 @@ check_command_status "/etc/crontabのコメントアウトに失敗しました�
 sed -i -e '/^%wheel\s\+.*/s/^/# /g' /etc/sudoers && \
 echo '%wheel  ALL=(ALL)       ALL' >> /etc/sudoers
 
-# 手動で、全てのユーザー毎に「crontab -l」を実行して、/etc/crontabに移す。移したら「crontab -r」を実行する
+# 本スクリプト終了後に手動で行う事の一例は以下
 
-# バックアップファイル（.org）を、任意の場所に移動する（特にifcfg-ファイル等、そのままにしておくと読み込まれて問題が起きる為）
+# cronの設定を１箇所に集約する為、全てのユーザー毎に「crontab -l」を実行して、その内容を/etc/crontabに移す。全て移したらユーザー毎に「crontab -r」を実行する
+# DNSのAとAAAAレコードのアドレスの追加 or 変更
 
 echo "全ての処理が完了しました。変更を反映させる為に再起動して下さい。"
 
