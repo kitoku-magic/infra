@@ -1814,6 +1814,105 @@ if [ "$IS_PYTHON_INSTALL" -eq 1 ]; then
 fi
 
 #----------------------------------------------------------#
+# Redisのインストール
+#----------------------------------------------------------#
+echo "Redisのインストールを行います。"
+
+print_current_time
+
+sudo useradd -s /bin/false redis
+
+check_command_status "Redisユーザーの作成に失敗しました。"
+
+cd /home/${GENERAL_USER_NAME}/src
+
+curl ${CURL_RETRY_OPTION} -L https://download.redis.io/releases/redis-${REDIS_VERSION}.tar.gz -o redis-${REDIS_VERSION}.tar.gz
+
+check_command_status "Redisのダウンロードに失敗しました。"
+
+tar zxvf ./redis-${REDIS_VERSION}.tar.gz
+
+check_command_status "Redisファイルの解凍に失敗しました。"
+
+cd redis-${REDIS_VERSION}
+
+make
+
+check_command_status "Redisのmakeに失敗しました。"
+
+sudo make PREFIX=/opt/no_sql/redis/${REDIS_VERSION} install
+
+check_command_status "Redisのmake installに失敗しました。"
+
+sudo ln -s /opt/no_sql/redis/${REDIS_VERSION} /opt/no_sql/redis/current
+
+sudo sed -i -e 's@^\(export PATH=\)\(.\+\)\(\$PATH\)$@\1\2/opt/no_sql/redis/current/bin:\3@g' /etc/profile
+↲
+source /etc/profile
+↲
+check_command_status "Redisの/etc/profileの反映に失敗しました。"
+
+sudo mkdir -p /etc/redis
+
+sudo mkdir -p /opt/no_sql/redis/current/dir
+
+sudo chmod -R 755 /opt/no_sql/redis/current
+
+sudo chown -R redis:redis /opt/no_sql/redis/${REDIS_VERSION}
+
+sudo cp redis.conf /etc/redis/
+
+sudo sed -i -e 's%^.*\(supervised +\)auto$%\1 systemd%g' /etc/redis/redis.conf
+
+sudo sed -i -e 's%^.*\(dir \)./$%\1/opt/no_sql/redis/current/dir%g' /etc/redis/redis.conf
+
+sudo sed -i -e 's%^.*\(bind 127.0.0.1\).*$%\1%g' /etc/redis/redis.conf
+
+sudo sed -i -e 's%^.*\(protected-mode \).*$%\1yes%g' /etc/redis/redis.conf
+
+sudo sed -i -e 's%^.*\(requirepass \).*$%\1${REDIS_PASSWORD}%g' /etc/redis/redis.conf
+
+cat <<'EOF' | sudo tee /etc/systemd/system/redis.service
+[Unit]
+Description=Redis In-Memory Data Store
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/opt/no_sql/redis/current/bin/redis-server /etc/redis/redis.conf
+ExecStop=/opt/no_sql/redis/current/bin/redis-cli shutdown
+Restart=always
+User=redis
+Group=redis
+
+RuntimeDirectory=redis
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+
+check_command_status "Redis用のdaemon-reloadに失敗しました。"
+
+sudo systemctl enable redis
+
+check_command_status "Redisの自動起動設定に失敗しました。"
+
+sudo systemctl start redis
+
+check_command_status "Redisの起動に失敗しました。"
+
+redis-cli ping
+
+check_command_status "RedisサーバへのPingに失敗しました。"
+
+print_current_time
+
+echo "Redisのインストールが完了しました。"
+
+#----------------------------------------------------------#
 # gitのインストール
 #----------------------------------------------------------#
 echo "gitのインストールを行います。"
